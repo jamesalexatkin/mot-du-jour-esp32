@@ -12,6 +12,11 @@
 #endif
 #include <time.h>
 
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <StreamUtils.h>
+#include <WiFiClientSecure.h>
+
 // Timezone string for your region, example: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 const char* timezone = "GMT0BST,M3.5.0/1,M10.5.0";  // GMT0BST,M3.5.0/1,M10.5.0 = Europe/London
 
@@ -24,6 +29,13 @@ int lastRunDay = -1;
 
 unsigned long lastNTPUpdate = 0;
 const unsigned long ntpSyncInterval = 30 * 60 * 1000;  // Sync every 1 minutes (in ms)
+const unsigned long httpTimeout = 10 * 1000;           // 10 seconds
+
+WiFiClientSecure client;
+// WiFiClient client;  // or WiFiClientSecure for HTTPS
+// WiFiClientSecure client;
+HTTPClient http;
+
 
 void syncTime() {
   Serial.print("Synchronizing time with NTP server...");
@@ -87,6 +99,7 @@ void setup() {
 
   u8g2_for_adafruit_gfx.begin(display);  // connect u8g2 procedures to Adafruit GFX
 
+  contactProxyAPI();
   drawDisplay(timeinfo);
 
   // do {
@@ -140,7 +153,7 @@ void setup() {
 
   // } while (display.nextPage());
 
-  
+
 
 
   pinMode(ledPin, OUTPUT);
@@ -148,21 +161,21 @@ void setup() {
 }
 
 String getMotDuJourString(const tm& timeinfo) {
-    const char* mois[] = {
-        "janv", "févr", "mars", "avri", "mai", "juin",
-        "juil", "août", "sept", "octo", "nove", "déc."
-    };
+  const char* mois[] = {
+    "janv", "févr", "mars", "avri", "mai", "juin",
+    "juil", "août", "sept", "octo", "nove", "déc."
+  };
 
-    const char* moisStr = "inco";
-    if (timeinfo.tm_mon >= 0 && timeinfo.tm_mon <= 11) {
-        moisStr = mois[timeinfo.tm_mon];
-    }
+  const char* moisStr = "inco";
+  if (timeinfo.tm_mon >= 0 && timeinfo.tm_mon <= 11) {
+    moisStr = mois[timeinfo.tm_mon];
+  }
 
-    char buff[40];
-    snprintf(buff, sizeof(buff), "mot du jour - %02d %s à %02d:%02d",
-             timeinfo.tm_mday, moisStr, timeinfo.tm_hour, timeinfo.tm_min);
+  char buff[40];
+  snprintf(buff, sizeof(buff), "mot du jour - %02d %s à %02d:%02d",
+           timeinfo.tm_mday, moisStr, timeinfo.tm_hour, timeinfo.tm_min);
 
-    return String(buff);
+  return String(buff);
 }
 
 void drawDisplay(struct tm timeinfo) {
@@ -183,7 +196,7 @@ void drawDisplay(struct tm timeinfo) {
     /// mot du jour
     u8g2_for_adafruit_gfx.setFont(subtitleFont);
     u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_RED);
-    u8g2_for_adafruit_gfx.print(mdjString); 
+    u8g2_for_adafruit_gfx.print(mdjString);
     u8g2_for_adafruit_gfx.print(F(" "));
     /// Icon
     u8g2_for_adafruit_gfx.setFont(u8g2_font_iconquadpix_m_all);
@@ -222,6 +235,106 @@ void drawDisplay(struct tm timeinfo) {
   } while (display.nextPage());
 }
 
+struct Entry {
+  String type;
+  String gender;
+  String definitions[10];
+};
+
+struct Word {
+  String name;
+  Entry entries[10];
+};
+
+void contactProxyAPI() {
+  const char* url = "https://mot-du-jour-api.onrender.com/mot_spontane";
+
+
+  // Ask HTTPClient to collect the Transfer-Encoding header
+  // (by default, it discards all headers)
+  const char* keys[] = { "Transfer-Encoding" };
+  http.collectHeaders(keys, 1);
+
+  // Send request
+  client.setInsecure();
+  http.setTimeout(httpTimeout);
+  http.begin(client, url);
+  http.addHeader("User-Agent", "ESP32Client");
+
+  int httpCode = http.GET();
+  if (httpCode != HTTP_CODE_OK) {
+    Serial.printf("HTTP GET request to %s failed with status code %d\n", url, httpCode);
+    http.end();
+
+    return;
+  }
+
+  // Get the raw and the decoded stream
+  Stream& rawStream = http.getStream();
+  ChunkDecodingStream decodedStream(http.getStream());
+
+  // Choose the right stream depending on the Transfer-Encoding header
+  Stream& response = http.header("Transfer-Encoding") == "chunked" ? decodedStream : rawStream;
+
+
+  // Parse response
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, response);
+  if (err) {
+    Serial.print("Deserialization failed: ");
+    Serial.println(err.c_str());
+    http.end();
+
+    return;
+  }
+
+
+  // Should return something like this
+  // {"Name":"oumra","Entries":[{"Type":"Noun","Gender":"fem.","Definitions":["(Islam) 'umra"]}]}
+
+
+  const char* name = doc["Name"];
+  Serial.printf("Name: %s\n", name);
+
+  // Read values
+  Word w = {};
+  w.name = name;
+
+  JsonArray entries = doc["Entries"];
+  int entriesCount = 0;
+  for (JsonVariant entry : entries) {
+    Entry e = {};
+
+    const char* wordType = entry["Type"];
+    Serial.printf("Type: %s\n", wordType);
+
+    e.type = wordType;
+
+    const char* gender = entry["Gender"];
+    Serial.printf("Gender: %s\n", gender);
+
+    e.gender = gender;
+
+    JsonArray definitions = entry["Definitions"];
+    int definitionsCount = 0;
+    for (JsonVariant definition : definitions) {
+      String parsedDef = definition.as<String>();
+      Serial.printf("%d: %s\n", definitionsCount, parsedDef);
+
+      e.definitions[definitionsCount] = parsedDef;
+
+      definitionsCount++;
+    }
+
+    w.entries[entriesCount] = e;
+
+    entriesCount++;
+  }
+
+  // Disconnect
+  http.end();
+}
+
 
 
 void loop() {
@@ -238,9 +351,10 @@ void loop() {
     syncTime();
   }
 
-  
+
   if (timeinfo.tm_sec == 0) {
-    
+    contactProxyAPI();
+
     drawDisplay(timeinfo);  // TODO: remove this, it's only for testing to trigger the task more often
   }
 
