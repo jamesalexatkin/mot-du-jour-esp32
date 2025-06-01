@@ -9,3 +9,4 @@ It communicates with [a proxy API](https://github.com/jamesalexatkin/mot-du-jour
 
 Clone the repo and flash it to a chip in Arduino IDE.
 
+*TODO: add note about secrets.h file*

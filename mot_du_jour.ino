@@ -113,62 +113,11 @@ void setup() {
 
   u8g2_for_adafruit_gfx.begin(display);  // connect u8g2 procedures to Adafruit GFX
 
-  contactProxyAPI();
-  drawDisplay(timeinfo);
+  JsonDocument doc = contactProxyAPI();
+  WordStruct word = parseWordFromDoc(doc);
+  Serial.println(word.name);
 
-  // do {
-  //   display.fillScreen(GxEPD_WHITE);
-
-  //   u8g2_for_adafruit_gfx.setFontMode(1);       // use u8g2 transparent mode (this is default)
-  //   u8g2_for_adafruit_gfx.setFontDirection(0);  // left to right (this is default)
-  //   // u8g2_for_adafruit_gfx.setFont(mainWordFont);
-  //   u8g2_for_adafruit_gfx.setBackgroundColor(GxEPD_WHITE);
-
-  //   // Title
-  //   u8g2_for_adafruit_gfx.setCursor(90, 15);
-  //   /// mot du jour
-  //   u8g2_for_adafruit_gfx.setFont(subtitleFont);
-  //   u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_RED);
-  //   u8g2_for_adafruit_gfx.print(F("mot du jour - 29 mai à 09:23"));  // TODO: replace this with current time eventually (https://randomnerdtutorials.com/esp32-date-time-ntp-client-server-arduino/)
-  //   u8g2_for_adafruit_gfx.print(F(" "));
-  //   /// Icon
-  //   u8g2_for_adafruit_gfx.setFont(u8g2_font_iconquadpix_m_all);
-  //   u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
-  //   u8g2_for_adafruit_gfx.print(F("l"));  // Double arrow circle icon (https://github.com/olikraus/u8g2/wiki/fntgrpbitfontmaker2#iconquadpix)
-
-  //   // Word - French
-  //   u8g2_for_adafruit_gfx.setCursor(leftMargin, 40);
-  //   u8g2_for_adafruit_gfx.setFont(mainWordFont);
-  //   u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
-  //   u8g2_for_adafruit_gfx.print(F("chouette"));
-  //   u8g2_for_adafruit_gfx.print(F("  "));
-  //   /// Type of word
-  //   int16_t horizontal_cursor = u8g2_for_adafruit_gfx.tx;
-  //   u8g2_for_adafruit_gfx.setFont(subtitleFont);
-  //   u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_RED);
-  //   u8g2_for_adafruit_gfx.print(F("noun f"));
-
-  //   // Definition - English
-  //   u8g2_for_adafruit_gfx.setFont(definitionFont);
-  //   u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
-  //   u8g2_for_adafruit_gfx.setCursor(leftMargin, 60);
-  //   u8g2_for_adafruit_gfx.print(F("1. owl (specifically, those species of owls without ear tufts; those with ear tufts are hiboux)"));
-
-  //   u8g2_for_adafruit_gfx.setCursor(horizontal_cursor, 75);
-  //   u8g2_for_adafruit_gfx.setFont(subtitleFont);
-  //   u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_RED);
-  //   u8g2_for_adafruit_gfx.print(F("adjective"));
-
-  //   u8g2_for_adafruit_gfx.setFont(definitionFont);
-  //   u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
-  //   u8g2_for_adafruit_gfx.setCursor(leftMargin, 90);
-  //   u8g2_for_adafruit_gfx.print(F("1. (informal) great, cool, swell"));
-
-
-  // } while (display.nextPage());
-
-
-
+  drawDisplay(timeinfo, word);
 
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, HIGH);
@@ -192,7 +141,7 @@ String getMotDuJourString(const tm& timeinfo) {
   return String(buff);
 }
 
-void drawDisplay(struct tm timeinfo) {
+void drawDisplay(struct tm timeinfo, struct WordStruct word) {
   Serial.println("#########\nDrawing display...\n#########");
 
   do {
@@ -221,37 +170,43 @@ void drawDisplay(struct tm timeinfo) {
     u8g2_for_adafruit_gfx.setCursor(leftMargin, 40);
     u8g2_for_adafruit_gfx.setFont(mainWordFont);
     u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
-    u8g2_for_adafruit_gfx.print(F("chouette"));
-    u8g2_for_adafruit_gfx.print(F("  "));
-    /// Type of word
-    int16_t horizontal_cursor = u8g2_for_adafruit_gfx.tx;
-    u8g2_for_adafruit_gfx.setFont(subtitleFont);
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_RED);
-    u8g2_for_adafruit_gfx.print(F("nom fem."));
+    u8g2_for_adafruit_gfx.print(word.name);
+    u8g2_for_adafruit_gfx.print("  ");
 
-    // Definition - English
-    u8g2_for_adafruit_gfx.setFont(definitionFont);
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
-    u8g2_for_adafruit_gfx.setCursor(leftMargin, 60);
-    u8g2_for_adafruit_gfx.print(F("1. owl (specifically, those species of owls without ear tufts; those with ear tufts are hiboux)"));
+    int verticalCursor = 60;
+    for (Entry e : word.entries) {
+      /// Type of word
+      int16_t horizontal_cursor = u8g2_for_adafruit_gfx.tx;
+      u8g2_for_adafruit_gfx.setFont(subtitleFont);
+      u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_RED);
+      u8g2_for_adafruit_gfx.print(e.type);
+      u8g2_for_adafruit_gfx.print(" ");
+      u8g2_for_adafruit_gfx.print(e.gender);
 
-    u8g2_for_adafruit_gfx.setCursor(horizontal_cursor, 75);
-    u8g2_for_adafruit_gfx.setFont(subtitleFont);
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_RED);
-    u8g2_for_adafruit_gfx.print(F("adjectif"));
+      int definitionCount = 0;
+      for (String d : e.definitions) {
+        if (d != "") {
+          // Definition - English
+          u8g2_for_adafruit_gfx.setFont(definitionFont);
+          u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
+          u8g2_for_adafruit_gfx.setCursor(leftMargin, verticalCursor);
+          // u8g2_for_adafruit_gfx.print(F(d));
+          u8g2_for_adafruit_gfx.print(definitionCount + 1);
+          u8g2_for_adafruit_gfx.print(". ");
+          u8g2_for_adafruit_gfx.print(d);
 
-    u8g2_for_adafruit_gfx.setFont(definitionFont);
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
-    u8g2_for_adafruit_gfx.setCursor(leftMargin, 90);
-    u8g2_for_adafruit_gfx.print(F("1. (informal) great, cool, swell"));
-
-
+          verticalCursor += 15;
+          definitionCount++;
+        }
+      }
+      verticalCursor += 15;
+    }
   } while (display.nextPage());
 }
 
 
 JsonDocument contactProxyAPI() {
-  const char* url = "https://mot-du-jour-api.onrender.com/mot_spontane"; 
+  const char* url = "https://mot-du-jour-api.onrender.com/mot_spontane";
 
   JsonDocument doc;
 
@@ -311,20 +266,15 @@ WordStruct parseWordFromDoc(JsonDocument doc) {
     Entry e = {};
 
     const char* wordType = entry["Type"];
-    Serial.printf("Type: %s\n", wordType);
-
     e.type = wordType;
 
     const char* gender = entry["Gender"];
-    Serial.printf("Gender: %s\n", gender);
-
     e.gender = gender;
 
     JsonArray definitions = entry["Definitions"];
     int definitionsCount = 0;
     for (JsonVariant definition : definitions) {
       String parsedDef = definition.as<String>();
-      Serial.printf("%d: %s\n", definitionsCount, parsedDef);
 
       e.definitions[definitionsCount] = parsedDef;
 
@@ -356,11 +306,13 @@ void loop() {
 
 
   if (timeinfo.tm_sec == 0) {
+    // TODO: remove this, it's only for testing to trigger the task more often
+
     JsonDocument doc = contactProxyAPI();
     WordStruct word = parseWordFromDoc(doc);
     Serial.println(word.name);
 
-    drawDisplay(timeinfo);  // TODO: remove this, it's only for testing to trigger the task more often
+    drawDisplay(timeinfo, word);
   }
 
   // Current time and date
@@ -369,7 +321,11 @@ void loop() {
                 timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
 
   if (timeinfo.tm_hour == taskHour && timeinfo.tm_min == taskMinute && lastRunDay != timeinfo.tm_mday) {
-    drawDisplay(timeinfo);
+    JsonDocument doc = contactProxyAPI();
+    WordStruct word = parseWordFromDoc(doc);
+    Serial.println(word.name);
+
+    drawDisplay(timeinfo, word);
     // Set the day to ensure it only runs once per day
     lastRunDay = timeinfo.tm_mday;
   }
