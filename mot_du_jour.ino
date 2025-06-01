@@ -37,22 +37,6 @@ WiFiClientSecure client;
 HTTPClient http;
 
 
-void syncTime() {
-  Serial.print("Synchronizing time with NTP server...");
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");  // UTC offset set to 0
-  time_t now = time(nullptr);
-  while (now < 24 * 3600) {  // Wait until time is valid
-    delay(100);
-    now = time(nullptr);
-  }
-  Serial.println(" Time synchronized!");
-
-  // Set timezone
-  setenv("TZ", timezone, 1);
-  tzset();
-
-  lastNTPUpdate = millis();  // Record the time of the last sync
-}
 
 
 
@@ -71,6 +55,36 @@ const uint8_t* subtitleFont = u8g2_font_helvB08_tf;
 const uint8_t* definitionFont = u8g2_font_helvR08_tf;
 
 const int leftMargin = 5;
+
+
+struct Entry {
+  String type;
+  String gender;
+  String definitions[10];
+};
+
+struct WordStruct {
+  String name;
+  Entry entries[10];
+};
+
+
+void syncTime() {
+  Serial.print("Synchronizing time with NTP server...");
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");  // UTC offset set to 0
+  time_t now = time(nullptr);
+  while (now < 24 * 3600) {  // Wait until time is valid
+    delay(100);
+    now = time(nullptr);
+  }
+  Serial.println(" Time synchronized!");
+
+  // Set timezone
+  setenv("TZ", timezone, 1);
+  tzset();
+
+  lastNTPUpdate = millis();  // Record the time of the last sync
+}
 
 void setup() {
   Serial.begin(115200);
@@ -235,20 +249,11 @@ void drawDisplay(struct tm timeinfo) {
   } while (display.nextPage());
 }
 
-struct Entry {
-  String type;
-  String gender;
-  String definitions[10];
-};
 
-struct Word {
-  String name;
-  Entry entries[10];
-};
+JsonDocument contactProxyAPI() {
+  const char* url = "https://mot-du-jour-api.onrender.com/mot_spontane"; 
 
-void contactProxyAPI() {
-  const char* url = "https://mot-du-jour-api.onrender.com/mot_spontane";
-
+  JsonDocument doc;
 
   // Ask HTTPClient to collect the Transfer-Encoding header
   // (by default, it discards all headers)
@@ -266,7 +271,7 @@ void contactProxyAPI() {
     Serial.printf("HTTP GET request to %s failed with status code %d\n", url, httpCode);
     http.end();
 
-    return;
+    return doc;
   }
 
   // Get the raw and the decoded stream
@@ -276,28 +281,28 @@ void contactProxyAPI() {
   // Choose the right stream depending on the Transfer-Encoding header
   Stream& response = http.header("Transfer-Encoding") == "chunked" ? decodedStream : rawStream;
 
-
   // Parse response
-  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, response);
   if (err) {
     Serial.print("Deserialization failed: ");
     Serial.println(err.c_str());
     http.end();
 
-    return;
+    return doc;
   }
 
+  // Disconnect
+  http.end();
 
-  // Should return something like this
-  // {"Name":"oumra","Entries":[{"Type":"Noun","Gender":"fem.","Definitions":["(Islam) 'umra"]}]}
+  return doc;
+}
 
-
+WordStruct parseWordFromDoc(JsonDocument doc) {
   const char* name = doc["Name"];
   Serial.printf("Name: %s\n", name);
 
   // Read values
-  Word w = {};
+  WordStruct w = {};
   w.name = name;
 
   JsonArray entries = doc["Entries"];
@@ -331,10 +336,8 @@ void contactProxyAPI() {
     entriesCount++;
   }
 
-  // Disconnect
-  http.end();
+  return w;
 }
-
 
 
 void loop() {
@@ -353,7 +356,9 @@ void loop() {
 
 
   if (timeinfo.tm_sec == 0) {
-    contactProxyAPI();
+    JsonDocument doc = contactProxyAPI();
+    WordStruct word = parseWordFromDoc(doc);
+    Serial.println(word.name);
 
     drawDisplay(timeinfo);  // TODO: remove this, it's only for testing to trigger the task more often
   }
