@@ -31,6 +31,7 @@ int lastRunDay = -1;
 unsigned long lastNTPUpdate = 0;
 const unsigned long ntpSyncInterval = 30 * 60 * 1000;  // Sync every 1 minutes (in ms)
 const unsigned long httpTimeout = 10 * 1000;           // 10 seconds
+bool firstCycle = true;
 
 WiFiClientSecure client;
 // WiFiClient client;  // or WiFiClientSecure for HTTPS
@@ -53,7 +54,8 @@ U8G2_FOR_ADAFRUIT_GFX u8g2_for_adafruit_gfx;
 
 const uint8_t* mainWordFont = u8g2_font_ncenB12_te;
 const uint8_t* subtitleFont = u8g2_font_helvB08_tf;
-const uint8_t* definitionFont = u8g2_font_helvR08_tf;
+// const uint8_t* definitionFont = u8g2_font_helvR08_tf;
+const uint8_t* definitionFont = u8g2_font_Georgia7px_te;
 
 const int leftMargin = 5;
 
@@ -87,8 +89,46 @@ void syncTime() {
   lastNTPUpdate = millis();  // Record the time of the last sync
 }
 
+void syncTime2() {
+  Serial.print("Synchronizing time with NTP server...");
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+
+  // Wait until NTP time is set properly
+  int retry = 0;
+  const int maxRetries = 50;
+  while ((now < 24 * 3600 || !getLocalTime(&timeinfo)) && retry < maxRetries) {
+    delay(200);
+    now = time(nullptr);
+    retry++;
+  }
+
+  if (retry < maxRetries) {
+    Serial.println(" Time synchronized!");
+  } else {
+    Serial.println(" Failed to synchronize time.");
+  }
+
+  // Set timezone
+  setenv("TZ", timezone, 1);
+  tzset();
+
+  lastNTPUpdate = millis();  // Record time of last sync
+}
+
 void setup() {
   Serial.begin(115200);
+
+  // Initialise display
+  display.init(115200, true, 2, false);
+  display.setRotation(3);  // Flipped landscape
+  display.setFullWindow();
+  display.firstPage();
+  u8g2_for_adafruit_gfx.begin(display);  // connect u8g2 procedures to Adafruit GFX
+
+  drawSplashScreen();
 
   // Connect to Wi-Fi
   Serial.print("Connecting to ");
@@ -100,28 +140,11 @@ void setup() {
   }
   Serial.println("");
   Serial.println("WiFi connected.");
-
+  
   // Sync NTP time
   time_t now = time(nullptr);
   struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
   syncTime();
-
-  delay(1000);
-  syncTime();
-
-  // Initialise display
-  display.init(115200, true, 2, false);
-  display.setRotation(3);  // Flipped landscape
-  display.setFullWindow();
-  display.firstPage();
-  u8g2_for_adafruit_gfx.begin(display);  // connect u8g2 procedures to Adafruit GFX
-
-  // Get initial word
-  JsonDocument doc = contactProxyAPI();
-  WordStruct word = parseWordFromDoc(doc);
-  Serial.println(word.name);
-  drawDisplay(timeinfo, word);
 
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, HIGH);
@@ -143,6 +166,30 @@ String getMotDuJourString(const tm& timeinfo) {
            timeinfo.tm_mday, moisStr, timeinfo.tm_hour, timeinfo.tm_min);
 
   return String(buff);
+}
+
+void drawSplashScreen() {
+  Serial.println("#########\nDrawing splash screen...\n#########");
+
+  do {
+    display.fillScreen(GxEPD_WHITE);
+
+    u8g2_for_adafruit_gfx.setFontMode(1);       // use u8g2 transparent mode (this is default)
+    u8g2_for_adafruit_gfx.setFontDirection(0);  // left to right (this is default)
+    u8g2_for_adafruit_gfx.setBackgroundColor(GxEPD_WHITE);
+
+    // Title
+    u8g2_for_adafruit_gfx.setCursor(leftMargin, 40);
+    u8g2_for_adafruit_gfx.setFont(u8g2_font_ncenB24_te);
+    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
+    u8g2_for_adafruit_gfx.print("mot du jour");
+
+    // "Loading..."
+    u8g2_for_adafruit_gfx.setCursor(leftMargin, 80);
+    u8g2_for_adafruit_gfx.setFont(u8g2_font_ncenR18_tf);
+    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_RED);
+    u8g2_for_adafruit_gfx.print("Loading...");
+  } while (display.nextPage());
 }
 
 void drawDisplay(struct tm timeinfo, struct WordStruct word) {
@@ -297,18 +344,16 @@ WordStruct parseWordFromDoc(JsonDocument doc) {
 void loop() {
   delay(1000);  // Run loop every second
 
-  digitalWrite(ledPin, HIGH);
-
-// Sync NTP time
+  // Sync NTP time
   time_t now = time(nullptr);
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
 
   // Resynchronize with NTP at every interval
-  if (millis() - lastNTPUpdate > ntpSyncInterval) {
+  if (millis() - lastNTPUpdate > ntpSyncInterval || firstCycle) {
     syncTime();
 
-
+    digitalWrite(ledPin, HIGH);
 
     // TODO: remove this, it's only for testing to trigger the task more often
 
@@ -317,6 +362,8 @@ void loop() {
     Serial.println(word.name);
 
     drawDisplay(timeinfo, word);
+
+    firstCycle = false;
   }
 
   // Current time and date
