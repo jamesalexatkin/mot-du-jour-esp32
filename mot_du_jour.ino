@@ -89,7 +89,9 @@ void setup() {
   display.firstPage();
   u8g2_for_adafruit_gfx.begin(display);  // connect u8g2 procedures to Adafruit GFX
 
-  drawSplashScreen();
+  if (SHOW_SPLASH_SCREEN) {
+    drawSplashScreen();
+  }
 
   // Connect to Wi-Fi
   Serial.print("Connecting to ");
@@ -101,7 +103,7 @@ void setup() {
   }
   Serial.println("");
   Serial.println("WiFi connected.");
-  
+
   // Sync NTP time
   time_t now = time(nullptr);
   struct tm timeinfo;
@@ -185,15 +187,24 @@ void drawDisplay(struct tm timeinfo, struct WordStruct word) {
     u8g2_for_adafruit_gfx.print(word.name);
     u8g2_for_adafruit_gfx.print("  ");
 
-    int verticalCursor = 60;
+    int verticalCursor = 40;
+    
+    int16_t typeOfWordHorizontalCursor = u8g2_for_adafruit_gfx.tx;
+    bool firstEntry = true;
     for (Entry e : word.entries) {
       /// Type of word
-      int16_t horizontal_cursor = u8g2_for_adafruit_gfx.tx;
+      u8g2_for_adafruit_gfx.setCursor(typeOfWordHorizontalCursor, verticalCursor);
       u8g2_for_adafruit_gfx.setFont(subtitleFont);
       u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_RED);
       u8g2_for_adafruit_gfx.print(e.type);
       u8g2_for_adafruit_gfx.print(" ");
       u8g2_for_adafruit_gfx.print(e.gender);
+
+      verticalCursor += 15;
+      // Pad an additional bit underneath the main word title if it's the first entry
+      if (firstEntry) {
+        verticalCursor += 5;
+      }
 
       int definitionCount = 0;
       for (String d : e.definitions) {
@@ -202,7 +213,6 @@ void drawDisplay(struct tm timeinfo, struct WordStruct word) {
           u8g2_for_adafruit_gfx.setFont(definitionFont);
           u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
           u8g2_for_adafruit_gfx.setCursor(LEFT_MARGIN, verticalCursor);
-          // u8g2_for_adafruit_gfx.print(F(d));
           u8g2_for_adafruit_gfx.print(definitionCount + 1);
           u8g2_for_adafruit_gfx.print(". ");
           u8g2_for_adafruit_gfx.print(d);
@@ -211,7 +221,7 @@ void drawDisplay(struct tm timeinfo, struct WordStruct word) {
           definitionCount++;
         }
       }
-      verticalCursor += 15;
+      firstEntry = false;
     }
   } while (display.nextPage());
 }
@@ -219,7 +229,7 @@ void drawDisplay(struct tm timeinfo, struct WordStruct word) {
 
 JsonDocument contactProxyAPI() {
   // const char* url = "https://mot-du-jour-api.onrender.com/mot_spontane";
-  const char* url = "https://mot-du-jour-api.onrender.com/mot_specifique?mot=chouette";
+  const char* url = "https://mot-du-jour-api.onrender.com/mot_specifique?mot=cochon";
 
   JsonDocument doc;
 

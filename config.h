@@ -20,4 +20,5 @@ const unsigned long httpTimeout = 10 * 1000;           // 10 seconds
 
 
 /* UI */
+const bool SHOW_SPLASH_SCREEN = false;
 const int LEFT_MARGIN = 5;
