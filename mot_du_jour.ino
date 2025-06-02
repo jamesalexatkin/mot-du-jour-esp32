@@ -3,6 +3,7 @@
 // #include "ntp.h"
 #include "secrets.h"
 
+// TODO: double check if all these are still needed
 
 #include <Arduino.h>
 #if defined(ESP32)
@@ -106,17 +107,20 @@ void setup() {
   localtime_r(&now, &timeinfo);
   syncTime();
 
-  display.init(115200, true, 2, false);  // Initialize display
-  display.setRotation(3);                // Flipped landscape
+  delay(1000);
+  syncTime();
+
+  // Initialise display
+  display.init(115200, true, 2, false);
+  display.setRotation(3);  // Flipped landscape
   display.setFullWindow();
   display.firstPage();
-
   u8g2_for_adafruit_gfx.begin(display);  // connect u8g2 procedures to Adafruit GFX
 
+  // Get initial word
   JsonDocument doc = contactProxyAPI();
   WordStruct word = parseWordFromDoc(doc);
   Serial.println(word.name);
-
   drawDisplay(timeinfo, word);
 
   pinMode(ledPin, OUTPUT);
@@ -295,6 +299,7 @@ void loop() {
 
   digitalWrite(ledPin, HIGH);
 
+// Sync NTP time
   time_t now = time(nullptr);
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
@@ -302,10 +307,9 @@ void loop() {
   // Resynchronize with NTP at every interval
   if (millis() - lastNTPUpdate > ntpSyncInterval) {
     syncTime();
-  }
 
 
-  if (timeinfo.tm_sec == 0) {
+
     // TODO: remove this, it's only for testing to trigger the task more often
 
     JsonDocument doc = contactProxyAPI();
