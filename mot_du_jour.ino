@@ -1,11 +1,14 @@
+
+#include "config.h"
+#include "secrets.h"
+
+#include <Arduino.h>
 #include <GxEPD2_3C.h>
 #include <U8g2_for_Adafruit_GFX.h>
 // #include "ntp.h"
-#include "secrets.h"
 
 // TODO: double check if all these are still needed
 
-#include <Arduino.h>
 #if defined(ESP32)
 #include <WiFi.h>
 #elif defined(ESP8266)
@@ -13,13 +16,11 @@
 #endif
 #include <time.h>
 
-#include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
 #include <StreamUtils.h>
 #include <WiFiClientSecure.h>
 
-// Timezone string for your region, example: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
-const char* timezone = "GMT0BST,M3.5.0/1,M10.5.0";  // GMT0BST,M3.5.0/1,M10.5.0 = Europe/London
 
 // Time that the daily task runs in 24 hour format
 const int taskHour = 9;
@@ -29,8 +30,6 @@ const int taskMinute = 0;
 int lastRunDay = -1;
 
 unsigned long lastNTPUpdate = 0;
-const unsigned long ntpSyncInterval = 30 * 60 * 1000;  // Sync every 1 minutes (in ms)
-const unsigned long httpTimeout = 10 * 1000;           // 10 seconds
 bool firstCycle = true;
 
 WiFiClientSecure client;
@@ -38,26 +37,17 @@ WiFiClientSecure client;
 // WiFiClientSecure client;
 HTTPClient http;
 
-
-
-
-
-
-const int ledPin = 22;
-
 // Set up WeActStudio 2.13" Epaper module
 GxEPD2_3C<GxEPD2_213_Z98c, GxEPD2_213_Z98c::HEIGHT> display(
-  GxEPD2_213_Z98c(/*CS=*/5, /*DC=*/0, /*RST=*/2, /*BUSY=*/15));
+  GxEPD2_213_Z98c(/*CS=*/CS_PIN, /*DC=*/DC_PIN, /*RST=*/RST_PIN, /*BUSY=*/BUSY_PIN));
 
 // Set up U8G2 fonts
 U8G2_FOR_ADAFRUIT_GFX u8g2_for_adafruit_gfx;
 
 const uint8_t* mainWordFont = u8g2_font_ncenB12_te;
 const uint8_t* subtitleFont = u8g2_font_helvB08_tf;
-// const uint8_t* definitionFont = u8g2_font_helvR08_tf;
-const uint8_t* definitionFont = u8g2_font_Georgia7px_te;
-
-const int leftMargin = 5;
+const uint8_t* definitionFont = u8g2_font_helvR08_tf;
+// const uint8_t* definitionFont = u8g2_font_Georgia7px_te;
 
 
 struct Entry {
@@ -83,39 +73,10 @@ void syncTime() {
   Serial.println(" Time synchronized!");
 
   // Set timezone
-  setenv("TZ", timezone, 1);
+  setenv("TZ", TIMEZONE, 1);
   tzset();
 
   lastNTPUpdate = millis();  // Record the time of the last sync
-}
-
-void syncTime2() {
-  Serial.print("Synchronizing time with NTP server...");
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-
-  time_t now = time(nullptr);
-  struct tm timeinfo;
-
-  // Wait until NTP time is set properly
-  int retry = 0;
-  const int maxRetries = 50;
-  while ((now < 24 * 3600 || !getLocalTime(&timeinfo)) && retry < maxRetries) {
-    delay(200);
-    now = time(nullptr);
-    retry++;
-  }
-
-  if (retry < maxRetries) {
-    Serial.println(" Time synchronized!");
-  } else {
-    Serial.println(" Failed to synchronize time.");
-  }
-
-  // Set timezone
-  setenv("TZ", timezone, 1);
-  tzset();
-
-  lastNTPUpdate = millis();  // Record time of last sync
 }
 
 void setup() {
@@ -146,8 +107,8 @@ void setup() {
   struct tm timeinfo;
   syncTime();
 
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, HIGH);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);
 }
 
 String getMotDuJourString(const tm& timeinfo) {
@@ -179,13 +140,13 @@ void drawSplashScreen() {
     u8g2_for_adafruit_gfx.setBackgroundColor(GxEPD_WHITE);
 
     // Title
-    u8g2_for_adafruit_gfx.setCursor(leftMargin, 40);
+    u8g2_for_adafruit_gfx.setCursor(LEFT_MARGIN, 40);
     u8g2_for_adafruit_gfx.setFont(u8g2_font_ncenB24_te);
     u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
     u8g2_for_adafruit_gfx.print("mot du jour");
 
     // "Loading..."
-    u8g2_for_adafruit_gfx.setCursor(leftMargin, 80);
+    u8g2_for_adafruit_gfx.setCursor(LEFT_MARGIN, 80);
     u8g2_for_adafruit_gfx.setFont(u8g2_font_ncenR18_tf);
     u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_RED);
     u8g2_for_adafruit_gfx.print("Loading...");
@@ -218,7 +179,7 @@ void drawDisplay(struct tm timeinfo, struct WordStruct word) {
     u8g2_for_adafruit_gfx.print(F("l"));  // Double arrow circle icon (https://github.com/olikraus/u8g2/wiki/fntgrpbitfontmaker2#iconquadpix)
 
     // Word - French
-    u8g2_for_adafruit_gfx.setCursor(leftMargin, 40);
+    u8g2_for_adafruit_gfx.setCursor(LEFT_MARGIN, 40);
     u8g2_for_adafruit_gfx.setFont(mainWordFont);
     u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
     u8g2_for_adafruit_gfx.print(word.name);
@@ -240,7 +201,7 @@ void drawDisplay(struct tm timeinfo, struct WordStruct word) {
           // Definition - English
           u8g2_for_adafruit_gfx.setFont(definitionFont);
           u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
-          u8g2_for_adafruit_gfx.setCursor(leftMargin, verticalCursor);
+          u8g2_for_adafruit_gfx.setCursor(LEFT_MARGIN, verticalCursor);
           // u8g2_for_adafruit_gfx.print(F(d));
           u8g2_for_adafruit_gfx.print(definitionCount + 1);
           u8g2_for_adafruit_gfx.print(". ");
@@ -257,7 +218,8 @@ void drawDisplay(struct tm timeinfo, struct WordStruct word) {
 
 
 JsonDocument contactProxyAPI() {
-  const char* url = "https://mot-du-jour-api.onrender.com/mot_spontane";
+  // const char* url = "https://mot-du-jour-api.onrender.com/mot_spontane";
+  const char* url = "https://mot-du-jour-api.onrender.com/mot_specifique?mot=chouette";
 
   JsonDocument doc;
 
@@ -303,7 +265,7 @@ JsonDocument contactProxyAPI() {
   return doc;
 }
 
-WordStruct parseWordFromDoc(JsonDocument doc) {
+WordStruct parseWordFromJsonDocument(JsonDocument doc) {
   const char* name = doc["Name"];
   Serial.printf("Name: %s\n", name);
 
@@ -353,12 +315,12 @@ void loop() {
   if (millis() - lastNTPUpdate > ntpSyncInterval || firstCycle) {
     syncTime();
 
-    digitalWrite(ledPin, HIGH);
+    digitalWrite(LED_PIN, HIGH);
 
     // TODO: remove this, it's only for testing to trigger the task more often
 
     JsonDocument doc = contactProxyAPI();
-    WordStruct word = parseWordFromDoc(doc);
+    WordStruct word = parseWordFromJsonDocument(doc);
     Serial.println(word.name);
 
     drawDisplay(timeinfo, word);
@@ -373,7 +335,7 @@ void loop() {
 
   if (timeinfo.tm_hour == taskHour && timeinfo.tm_min == taskMinute && lastRunDay != timeinfo.tm_mday) {
     JsonDocument doc = contactProxyAPI();
-    WordStruct word = parseWordFromDoc(doc);
+    WordStruct word = parseWordFromJsonDocument(doc);
     Serial.println(word.name);
 
     drawDisplay(timeinfo, word);
